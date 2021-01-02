@@ -1,0 +1,91 @@
+---
+title: "Britain's Electricity Mix 2011-2021"
+author: "Uni Lee"
+date: "1/2/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(kableExtra)
+options(scipen=999)
+```
+
+# Will renewables replace coal in Britain?
+
+In 2018, the British government laid out plans to phase out of coal by 2025. Can Britain meet this goal? [Grid Watch](http://gridwatch.templar.co.uk/) provides data on electricity demand and supply in Britain by energy source. We will analyze this dataset to examine how Britain's electricity mix has changed in the last 10 years, whether it is on track to meet the coal phase-out deadline and which energy source will replace the decline of coal. 
+
+## Data Cleaning
+
+```{r}
+# Load dataset
+elec_raw <- read.csv("data/gridwatch.csv")
+
+# Extract years from the time data
+elec_raw$year <- year(ymd_hms(elec_raw$timestamp))
+
+# Select variables of interest. We rename "ccgt" variable to "gas" for easy use of terms. We omit pumped, hydro, oil variables because their role in electricity generaiton is negligible.
+elec <- elec_raw %>% select(id, year, coal, nuclear, ccgt, wind,  biomass, solar) %>% rename(gas=ccgt)
+
+# Check for missing values 
+colSums(is.na(elec))
+
+```
+
+## Data Wrangling 
+
+Each row of the dataset represents output of all sources of electricity generation at one point in time. For the purpose of analysis, we will take the yearly average by source. 
+
+```{r}
+# Pivot the dataset longer and calculate yearly average by source.
+elec <- elec %>% pivot_longer(cols=coal:solar,
+                              names_to="source",
+                              values_to="output") %>%
+  group_by(year, source) %>% 
+  summarize(output_avg = round(mean(output),2) ) %>% arrange(desc(output_avg)) %>% as.data.frame()
+```
+
+
+## Data Analysis and Visualization
+
+### 1. Britain's Energy Mix in 2020
+
+```{r}
+total <- sum(elec$output_avg[elec$year==2021])
+mix_2020 <- elec %>% filter(year==2020) %>% group_by(source) %>%
+  mutate(share = round(output_avg/total*100,2)) %>% select(-year) %>% as.data.frame()
+mix_2020 %>% kable()
+
+```
+
+In 2020, coal power produced only `r mix_2020[6,3]`% of Britain's electricity. Britain is indeed on its way to phasing out of coal power. 
+
+### 2. Decline of coal in Britain
+
+
+### 3. How does coal power in Britain compare to other energy sources? 
+
+General overview of change in electricity output of all data sources shows us that the production of electricity from coal has dropped significantly over the years. However, growth of renewables (solar, wind, biomass) cannot is slower than the pace of coal's decline. As a result, gas has become the primary source of energy for Britain. While nuclear power has been somewhat declining, nuclear power still takes up `r mix_2020[2,3]` % of the energy mix. 
+
+```{r}
+# Factorize energy sources for plotting
+elec$source <- factor(elec$source, levels=c("coal","gas","solar", "wind", "biomass", "nuclear"))
+
+# Plot change in energy output by source 
+ggplot(elec, aes(x=year, y=output_avg, color=source)) +
+  geom_line() + facet_wrap(~source) +
+  labs(title="Graph 1. Change in electricity output by source (2011-2021)",
+       x="Year", y="Yearly average output (MWh)") +
+  theme(legend.position="none") +
+  theme_light()
+
+
+```
+
+
+
+
+
