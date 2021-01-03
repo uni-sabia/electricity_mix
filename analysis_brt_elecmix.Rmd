@@ -1,5 +1,5 @@
 ---
-title: "Britain's Electricity Mix 2011-2021"
+title: "Has renewables overtaken fossil fuels in Britain's electricity in 2020?"
 author: "Uni Lee"
 date: "1/2/2021"
 output: html_document
@@ -10,13 +10,24 @@ knitr::opts_chunk$set(echo = TRUE)
 library(dplyr)
 library(tidyverse)
 library(lubridate)
-library(kableExtra)
+library(gt)
+library(ggplot2)
+library(ggrepel)
 options(scipen=999)
 ```
 
-# Will renewables replace coal in Britain?
+# The end of coal in Britain: How did they get there and who awaits at the end of the coal tunnel?
 
-In 2018, the British government laid out plans to phase out of coal by 2025. Can Britain meet this goal? [Grid Watch](http://gridwatch.templar.co.uk/) provides data on electricity demand and supply in Britain by energy source. We will analyze this dataset to examine how Britain's electricity mix has changed in the last 10 years, whether it is on track to meet the coal phase-out deadline and which energy source will replace the decline of coal. 
+The Great Britain is daring greatly toward the end of the coal era. Only two years after the government's official commitment to coal phase-out,[Britain's electricity sector reportedly went two months without coal power](https://www.bbc.com/news/science-environment-52973089). Regarding Britain's coal phase-out, many questions arise:
+
+* Has renewables surpassed coal in 2020?
+* What led to the decline of coal? What are some historical trends? 
+* How has other sources of electricity flared in comparison to coal? Can the growth of renewables pace with the rate of decline of coal? 
+* Has the decline of coal power contributed to reducing carbon emissions in Britain?
+
+# Data
+
+[Grid Watch](http://gridwatch.templar.co.uk/) provides data on electricity demand and supply in Britain by energy source. We will analyze this dataset to answer these questions. To answer the last question, we will utilize carbon emissions data from [Our World in Data](https://github.com/owid/co2-data).
 
 ## Data Cleaning
 
@@ -27,8 +38,13 @@ elec_raw <- read.csv("data/gridwatch.csv")
 # Extract years from the time data
 elec_raw$year <- year(ymd_hms(elec_raw$timestamp))
 
-# Select variables of interest. We rename "ccgt" variable to "gas" for easy use of terms. We omit pumped, hydro, oil variables because their role in electricity generaiton is negligible.
-elec <- elec_raw %>% select(id, year, coal, nuclear, ccgt, wind,  biomass, solar) %>% rename(gas=ccgt)
+# Calculate total output of all energy sources. We sum the capacities of pumped, hydro, oil, ocgt sources because they are negligible.
+elec_raw <- elec_raw %>% mutate(
+  renewable = wind + solar + biomass,
+  other = pumped + hydro + oil + ocgt)
+
+# Select variables of interest. We rename "ccgt" variable to "gas" for easy use of terms. We consider wind, solar, biomass as one category (renewable).
+elec <- elec_raw %>% select(id, year, coal, nuclear, ccgt, renewable, other) %>% rename(gas=ccgt)
 
 # Check for missing values 
 colSums(is.na(elec))
@@ -37,55 +53,83 @@ colSums(is.na(elec))
 
 ## Data Wrangling 
 
-Each row of the dataset represents output of all sources of electricity generation at one point in time. For the purpose of analysis, we will take the yearly average by source. 
+In the Grid Watch dataset, the unit of measurement for electricity output from each source is in GW. In other words, each value represents the total capacity of all power generators by source that was active at one point in time. For the purpose of analysis, we will take the yearly average of the active capacity by source. 
 
 ```{r}
 # Pivot the dataset longer and calculate yearly average by source.
-elec <- elec %>% pivot_longer(cols=coal:solar,
+elec_long <- elec %>% pivot_longer(cols=coal:other,
                               names_to="source",
-                              values_to="output") %>%
+                              values_to="output") 
+elec_calc <- elec_long %>% 
   group_by(year, source) %>% 
-  summarize(output_avg = round(mean(output),2) ) %>% arrange(desc(output_avg)) %>% as.data.frame()
+  summarize(output = round(mean(output),2) ) %>% arrange(desc(year)) %>% as.data.frame()
 ```
 
 
-## Data Analysis and Visualization
+# Has renewables surpassed coal in 2020?
 
-### 1. Britain's Energy Mix in 2020
 
 ```{r}
-total <- sum(elec$output_avg[elec$year==2021])
-mix_2020 <- elec %>% filter(year==2020) %>% group_by(source) %>%
-  mutate(share = round(output_avg/total*100,2)) %>% select(-year) %>% as.data.frame()
-mix_2020 %>% kable()
+mix_2020 <- elec_calc %>% filter(year==2020) %>% select(-year) %>%
+  mutate(share=round(output/sum(output)*100,2)) %>% arrange(share) 
+mix_2020
+
+gt(mix_2020) %>% tab_header(
+  title="Britain's Electricity Mix in 2020") %>% tab_source_note(
+  source_note = "Source: Grid Watch"
+) %>% cols_label(
+  source="Energy",
+  output="Output (MW)",
+  share = "Share in %"
+)
 
 ```
 
-In 2020, coal power produced only `r mix_2020[6,3]`% of Britain's electricity. Britain is indeed on its way to phasing out of coal power. 
+In 2020, coal power produced only `r mix_2020[1,3]`% of Britain's electricity. Britain is indeed on its way to phasing out of coal power. On the other hand, renewables are on the rise, accounting for `r mix_2020[4,1]`% of the energy mix. However, as gas production remains dominant, energy production from renewables is still lower than fossil fuels. 
 
-### 2. Decline of coal in Britain
+# What led to the decline of coal? What are some historical trends? 
+
+Coal power generation peaked in 2012, and declined rapidly ever since. According to [Carbon Brief](https://www.carbonbrief.org/countdown-to-2025-tracking-the-uk-coal-phase-out), 8.4GW of coal power plants have closed since 2010. Closure of the last coal power station in Britain is scheduled in 2025. Tightening regulations around air pollution and carbon emissions, public demand for coal phase-out due to safety and health concerns as well as the falling price of gas and renewables fostered the closure of coal power plants, as coal companies were operating at a loss.
 
 
-### 3. How does coal power in Britain compare to other energy sources? 
+```{r}
+coal <- elec_calc %>% filter(source=="coal")
+
+ggplot(coal, aes(x=year, y=output)) + geom_area(alpha=0.5) +
+  labs(title = "Change in Coal Power Generation 2011-2020",
+        y="Output in MW") +
+  theme(axis.title.x=element_blank()) + 
+  theme_light() + 
+  geom_point(alpha=0.4) +
+  geom_text_repel(aes(label=output))
+
+```
+
+
+### 3. How has other sources of electricity flared in comparison to coal? Can the growth of renewables pace with the rate of decline of coal?  
 
 General overview of change in electricity output of all data sources shows us that the production of electricity from coal has dropped significantly over the years. However, growth of renewables (solar, wind, biomass) cannot is slower than the pace of coal's decline. As a result, gas has become the primary source of energy for Britain. While nuclear power has been somewhat declining, nuclear power still takes up `r mix_2020[2,3]` % of the energy mix. 
 
 ```{r}
 # Factorize energy sources for plotting
-elec$source <- factor(elec$source, levels=c("coal","gas","solar", "wind", "biomass", "nuclear"))
+elec_calc$source <- factor(elec_calc$source, levels=c("coal","renewable", "gas", "nuclear", "other"))
 
 # Plot change in energy output by source 
-ggplot(elec, aes(x=year, y=output_avg, color=source)) +
-  geom_line() + facet_wrap(~source) +
-  labs(title="Graph 1. Change in electricity output by source (2011-2021)",
-       x="Year", y="Yearly average output (MWh)") +
-  theme(legend.position="none") +
-  theme_light()
-
+ggplot(elec_calc, aes(x=year, y=output, fill=source)) +
+  geom_area(alpha=0.8) +
+  labs(title="Change in electricity output by source (2011-2021)",
+       x="Year", y="Yearly average output (MW)") +
+  theme_light() +
+  ylim(0,40000)
 
 ```
 
 
 
+# References 
 
+BBC, 2019. _Energy Briefing_. Accessed on 03.01.2021. Retrieved from https://news.files.bbci.co.uk/include/newsspec/pdfs/bbc-briefing-energy-newsspec-25305-v1.pdf
 
+Grid Watch, 2021. _G.B. National Grid Status._ Viewed 03.01.2021. \<http://gridwatch.templar.co.uk/\>
+
+Our World in Data, 2020. _Data on CO2 and Greenhouse Gas Emissions by Our World in Data_ Viewed 03.01.2021. \<https://github.com/owid/co2-data\>
