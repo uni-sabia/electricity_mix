@@ -14,6 +14,7 @@ library(gt)
 library(ggplot2)
 library(ggrepel)
 library(scales)
+library(plm)
 options(scipen=999)
 ```
 
@@ -24,7 +25,7 @@ The Great Britain is daring greatly toward the end of the coal era. Only two yea
 * Has renewables surpassed coal in 2020?
 * What led to the decline of coal? What are some historical trends? 
 * How has other sources of electricity flared in comparison to coal? Can the growth of renewables pace with the rate of decline of coal? 
-* Has the decline of coal power contributed to reducing carbon emissions in Britain?
+* What is the effect of coal phase-out on reducing carbon emissions?
 
 # Data
 
@@ -50,8 +51,11 @@ elec <- elec_raw %>% select(id, year, coal, nuclear, ccgt, renewable, other) %>%
 ## Check for missing values 
 colSums(is.na(elec))
 
-# Load dataset from Our World in Data, select Britain, filter by year, select variables of interest 
-co2_raw <- read.csv("data/owid-co2-data.csv") %>% filter(country=="United Kingdom", year > 2010) %>% select(year, co2, co2_growth_prct, coal_co2)
+# Load dataset from Our World in Data, select Britain and select variables of interest 
+co2_raw <- read.csv("data/owid-co2-data.csv") %>% filter(country=="United Kingdom", year==2019 | year>2011) %>% select(year, co2, coal_co2, energy_per_capita, population, gdp)
+
+## Check for missing values 
+colSums(is.na(co2_raw))
 
 ```
 
@@ -69,6 +73,7 @@ elec_calc <- elec_long %>%
   summarize(output = round(mean(output),2) ) %>% arrange(desc(year)) %>% as.data.frame()
 ```
 
+The CO2 dataset provided by Our World in Data will be merged with a subset of the Grid Watch data to compare trends in CO2 emissions and coal power generation. 
 
 # Has renewables surpassed coal in 2020?
 
@@ -96,15 +101,18 @@ In 2020, coal power produced only `r mix_2020[1,3]`% of Britain's electricity. B
 
 The decline of coal power in Britain was already underway well before the government's announcement of coal phase-out commitment in 2018. After reaching its peak in 2012, coal started rapidly declining, as the graph below demonstrates. According to [Carbon Brief](https://www.carbonbrief.org/countdown-to-2025-tracking-the-uk-coal-phase-out), 8.4GW of coal power plants have closed since 2010. Closure of the last coal power station in Britain is scheduled in 2025. 
 
-The decline of coal can be attributed to tightened regulations for air pollution control and tackling climate change. Of particular influence was imposing [carbon tax](https://www.ft.com/content/a05d1dd4-dddd-11e9-9743-db5a370481bc) on companies that produce electricity from fossil fuels in 2013. In addition, all new coal power plants were required to be equipped with carbon capture and storage (CCS) system, which is prohibitively expensive. The carbon tax and CCS requirement led to the loss of business case for coal. 
-
 
 ```{r}
+# Subset coal data
 coal <- elec_calc %>% filter(source=="coal")
-coal$year <- as.integer(coal$year)
+# Calculate % change in coal power since 2013, when the carbon tax was imposed.
+coal_2013 <- coal$output[which(coal$year==2013)]
+coal_2020 <- coal$output[which(coal$year==2020)]
+coal_drop <- round((coal_2013-coal_2020)/coal_2013*100,1)
 
+# Graph
 ggplot(coal, aes(x=year, y=output)) + geom_area(alpha=0.5) +
-  labs(title = "Change in Coal Power Generation 2011-2020",
+  labs(title = "Change in Coal Power Loaded Capacity 2011-2020",
         y="Output in MW") +
     theme_minimal() + 
   theme(axis.title.x=element_blank()) + 
@@ -114,6 +122,8 @@ ggplot(coal, aes(x=year, y=output)) + geom_area(alpha=0.5) +
 
 
 ```
+
+The decline of coal can be attributed to tightened regulations for air pollution control and tackling climate change. Of particular influence was imposing [carbon tax](https://www.ft.com/content/a05d1dd4-dddd-11e9-9743-db5a370481bc) on companies that produce electricity from fossil fuels in 2013. In addition, all new coal power plants were required to be equipped with carbon capture and storage (CCS) system, which is prohibitively expensive. The carbon tax and CCS requirement led to the loss of business case for coal. Since the adoption of carbon tax, coal power generation dropped by `r coal_drop`%. 
 
 
 ### 3. How has other sources of electricity flared in comparison to coal? Can the growth of renewables pace with the rate of decline of coal?  
@@ -127,7 +137,7 @@ elec_calc$source <- factor(elec_calc$source, levels=c("coal","renewable", "gas",
 # Plot change in energy output by source 
 ggplot(elec_calc, aes(x=year, y=output, fill=source)) +
   geom_area(alpha=0.8) +
-  labs(title="Change in electricity output by source (2011-2021)",
+  labs(title="Change in loaded generation capacity by source (2011-2021)",
        x="Year", y="Yearly average output (MW)") +
   theme_light() +
   ylim(0,40000)
@@ -136,32 +146,26 @@ ggplot(elec_calc, aes(x=year, y=output, fill=source)) +
 
 # Has the decline of coal power contributed to reducing carbon emissions in Britain?
 
+```{r include=FALSE}
+# Calculate the % change in carbon emissions since 2013
+co2_calc <- co2_raw %>% filter(year %in% c(1990,2013, 2018)) %>% select(year, co2) 
+co2_ch1 <- round((co2_calc[3,2] - co2_calc[2,2])/co2_calc[2,2]*100, 1)
+co2_ch2 <- round((co2_calc[3,2] - co2_calc[1,2])/co2_calc[1,2]*100,1)
+
+```
+
+In 2018, Britain's carbon emissions had dropped by `r abs(co2_ch2)` compared to 1990 level. How much of this drop in carbon emissions can be attributed to shutdown of coal power plants? What do I do to show that they covariate? I want to draw 2 graphs!!
+
 ```{r}
-# Combine the dataset on co2 with coal production dataset and pivot it longer for graphing purpose
-#co2 <- merge(co2_raw, coal, by="year") %>% select(-source) %>% 
-#  rename(coal_output = output) 
+# Combine the dataset on co2 with coal production dataset 
+co2_wide <- merge(co2_raw, coal, by="year") %>% select(-source) %>% mutate(co2=co2*1000)
 
+# Is there a linear relationship between co2 emissions and coal power generation?
+plot(co2~output, data=co2_wide)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-# graph trends 
-ggplot(co2, aes(x=year, y=value, color=variable)) + 
-  geom_line()
+# Regression model
+co2_reg <- lm(co2~output, data=co2_wide)
+summary(co2_reg)
 
 ```
 
