@@ -1,5 +1,5 @@
 ---
-title: "Has renewables overtaken fossil fuels in Britain's electricity in 2020?"
+title: "Coal-free Britain: How did they get there and what comes next?"
 author: "Uni Lee"
 date: "5/2/2021"
 output: html_document
@@ -16,8 +16,6 @@ library(ggrepel)
 library(scales)
 options(scipen=999)
 ```
-
-# The end of coal in Britain: How did they get there and who awaits at the end of the coal tunnel?
 
 The Great Britain is daring greatly toward the end of the coal era. Only two years after the government's official commitment to coal phase-out, [Britain's electricity sector reportedly went two months without coal power](https://www.bbc.com/news/science-environment-52973089). As a sustainable energy advocate, I was thrilled about this news. Then I started pondering these questions: 
 
