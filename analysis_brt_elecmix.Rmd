@@ -14,7 +14,6 @@ library(gt)
 library(ggplot2)
 library(ggrepel)
 library(scales)
-library(plm)
 options(scipen=999)
 ```
 
