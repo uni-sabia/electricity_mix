@@ -14,6 +14,7 @@ library(gt)
 library(ggplot2)
 library(ggrepel)
 library(scales)
+library(RWordPress)
 options(scipen=999)
 ```
 
@@ -81,17 +82,20 @@ mix_2020 <- elec_calc %>% filter(year==2020) %>% select(-year) %>%
   mutate(share=round(output/sum(output)*100,2)) %>% arrange(desc(share)) 
 
 # Put the results in a nice table
-gt(mix_2020) %>% tab_header(
+table1 <- gt(mix_2020) %>% tab_header(
   title="Britain's Electricity Mix in 2020") %>% tab_source_note(
   source_note = "Source: Grid Watch"
 ) %>% cols_label(
   source="Energy",
   output="Output (MW)",
-  share = "Share in %"
-)
+  share = "Share in %")
+```
+```{r include=false}
+gtsave(table1, "image/table1.png")
 
 ```
 
+<img src="https://conscioustableblog.files.wordpress.com/YEAR/MONTH/newplot.png" alt="newplot"/>
 
 Gas is the most dominant source of electricity in Britain (`r mix_2020[1,3]`%). Coal power accounted for only `r mix_2020[5,3]`%. Renewables have risen reasonably, accounting for `r mix_2020[2,3]`% of the energy mix. Although the decline of coal should be celebrated, gas should ultimately be replaced with renewable energy sources for the sake of climate. Nuclear power is a subject for a heated debate. Regardless of the heated nuclear politics, (the cost of renewable energy has fallen significantly (88% for utility-scale solar), while that of [nuclear has gone up by 23%](https://www.reuters.com/article/energy-nuclearpower-idAFL5N26F42J). [BBC's 2019 Energy Briefing](https://news.files.bbci.co.uk/include/newsspec/pdfs/bbc-briefing-energy-newsspec-25305-v1.pdf) reports that nuclear power stations are experiencing delays due to similar concerns.
 
@@ -115,7 +119,7 @@ The decline of coal can be attributed to tightened regulations for air pollution
 
 ```{r}
 # Graph
-ggplot(coal, aes(x=year, y=output)) + geom_area(alpha=0.5) +
+graph1 <- ggplot(coal, aes(x=year, y=output)) + geom_area(alpha=0.5) +
   labs(title = "Change in Coal Power Loaded Capacity 2011-2020",
         y="Output in MW") +
     theme_classic() + 
@@ -124,11 +128,12 @@ ggplot(coal, aes(x=year, y=output)) + geom_area(alpha=0.5) +
   geom_text_repel(aes(label=output)) +   
   scale_x_continuous(breaks=pretty_breaks()) + 
   geom_vline(xintercept=2013, linetype="dashed", color="red") #Dotted red line shows the year in which carbon tax was introduced. 
-
+graph1
+ggsave("image/graph1.png", width = 20, height = 15, units = "cm")
 ```
 
 
-### 3. How has other sources of electricity flared in comparison to coal? Can the growth of renewables pace with the rate of decline of coal?  
+# How has other sources of electricity flared in comparison to coal? Can the growth of renewables pace with the rate of decline of coal?  
  
 General overview of change in electricity output of all data sources shows that the production of electricity from coal has dropped significantly over the years. However, growth of renewable energies  (solar, wind, biomass) is slower than the pace at which coal has declined. Instead, gas has replaced coal, accounting for `r mix_2020[1,3]` % of the energy mix. Meanwhile, nuclear power generation shows slow decline, taking up `r mix_2020[3,3]`% of the energy mix. 
 
@@ -138,11 +143,14 @@ General overview of change in electricity output of all data sources shows that 
 elec_calc$source <- factor(elec_calc$source, levels=c("coal","renewable", "gas", "nuclear", "other"))
 
 # Plot change in energy output by source 
-ggplot(elec_calc, aes(x=year, y=output, fill=source)) +
+graph2 <- ggplot(elec_calc, aes(x=year, y=output, fill=source)) +
   geom_area(alpha=0.8) +
   labs(title="Change in loaded generation capacity by source (2011-2021)",
        x="Year", y="Yearly average output (MW)") +
-  theme_light() +  ylim(0,40000)
+  theme_classic() + ylim(0,40000) +
+  scale_x_continuous(breaks=pretty_breaks())
+graph2
+ggsave("image/graph2.png", width = 20, height = 15, units = "cm")
 
 ```
 
@@ -159,15 +167,16 @@ co2_ch_1990 <- co2_calc$co2[which(co2_calc$hhyear==2018)]
 
 Compared to 1990, Britain's carbon emissions had dropped by `r abs(co2_ch_1990)`. The red dotted line marks the year 2013, when carbon pricing was introduced to Britain. 
 
-
 ```{r}
 # Graph relative change in carbon emissions and coal production by year.
-ggplot(co2_calc, aes(x=year, y=change_1990)) +
+graph3 <- ggplot(co2_calc, aes(x=year, y=change_1990)) +
   geom_line(color="blue", size=1) +
   theme_classic() + 
   labs(y="% Change", title="Change in Carbon Emissions Compared to 1990 in Britain") + 
   theme(plot.title=element_text(hjust=0.5)) + 
   geom_vline(xintercept=2013, color="red", linetype="dashed") 
+graph3
+ggsave("image/graph3.png", width = 20, height = 15, units = "cm")
   
 ```
 
