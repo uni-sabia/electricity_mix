@@ -2,4 +2,4 @@ In 2018, the British government laid out plans to phase out of coal by 2025. Can
 
 This exercise has been posted to Uni Lee's Conscious Table Blog. https://conscioustableblog.wordpress.com/2021/01/05/coal-free-britain-how-did-they-get-there-and-what-comes-next/
 
-## Data source: Grid Watch (http://gridwatch.templar.co.uk/)
+Data source: Grid Watch (http://gridwatch.templar.co.uk/)
