@@ -1,0 +1,65 @@
+---
+title: "Finding the optimal capacity mix"
+author: "Uni Lee"
+date: "3/10/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(lubridate)
+library(stringr)
+```
+
+# How does renewable energy change the optimal capacity mix for electricity generation? 
+
+As Energiewende (energy transition) advances around the world, the electricity sector is going through a major structural change. Countries around the world are moving away from fossil fuels and nuclear power and increasing the share of low-carbon energy sources to reduce carbon emissions. How would the higher share of renewable energy change the optimal capacity mix? To answer this question, let us turn to Denmark, [which has the largest share of low-carbon energy (solar, wind, hydro, biomass, waste, geothermal) in the EU, reaching 77.4% of the total generation in 2020.  (data source: Our World in Data)](https://github.com/owid/energy-data). 
+
+```{r}
+eu <- c("AUT", "BEL", "BGR", "HRV", "CYP", "CZE", "DNK", "EST", "FIN", "FRA", "DEU", "GRC", "HUN", "IRL", "ITA", "LVA", "LTU", "LUX", "MLT", "NLD", "POL", "PRT", "ROU", "SVK", "SVN", "ESP", "SWE")
+energy <- read.csv("data/owid-energy-data.csv", sep=",") %>%
+  filter(year==2019, iso_code %in% eu) %>% select(country, renewables_share_elec) %>% na.omit() %>%
+  arrange(desc(renewables_share_elec)) %>% top_n(10)
+
+ggplot(energy, aes(x=reorder(country,-renewables_share_elec), y=renewables_share_elec)) + geom_col() +
+  ylim(0,90)
+
+```
+
+
+## Data
+
+[Open Power System Data](https://open-power-system-data.org/) gives hour-by-hour electricity demand (load), total capacity, total generation, solar and wind generation and capacity in the EU. 
+
+For this exercise, we take a look at 
+
+```{r}
+raw <- read.csv("data/openpowersystemdata.csv")
+denmark <- raw %>% filter(str_detect(cet_cest_timestamp, "2019")) %>%  
+  select(timestamp=cet_cest_timestamp,
+         load = DK_load_actual_entsoe_transparency,
+         solar_gen = DK_solar_generation_actual,
+         wind_gen = DK_wind_generation_actual) %>%
+  mutate(residual_load = load - solar_gen - wind_gen)  # Calculate residual load, the rest of the load not served by solar and wind
+
+# Order the residual load in descending order 
+denmark_arr <- denmark %>% 
+  arrange(desc(residual_load)) 
+
+# Create a vector to name each hour of the year
+hr <- 1:8760 
+
+denmark_arr <- cbind(hr, denmark_arr)
+
+# Plot the load duration curve 
+ggplot(denmark_arr, aes(x=hr, y=residual_load)) + geom_area()
+```
+
+# Screening Curve
+
+
+
