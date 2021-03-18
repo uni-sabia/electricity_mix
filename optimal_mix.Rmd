@@ -1,5 +1,5 @@
 ---
-title: "Finding the optimal capacity mix"
+title: "Will coal and nuclear power survive the energy transition?"
 author: "Uni Lee"
 date: "3/10/2021"
 output: html_document
@@ -13,53 +13,141 @@ library(tidyverse)
 library(ggplot2)
 library(lubridate)
 library(stringr)
+library(ggpubr)
+library(grid)
 ```
 
-# How does renewable energy change the optimal capacity mix for electricity generation? 
+To curb carbon emissions, many European countries have rapidly increased renewable energy capacity in the electricity sector and put a price on carbon. This transition from fossil-fuels to renewable energy is often referred to as "energy transition". As energy transition advances, what will happen to conventional power sources such as nuclear and coal? To answer this question, let us turn to Denmark, [which has the largest share of low-carbon energy (solar, wind, hydro, biomass, waste, geothermal) in the EU, reaching 77.3% of the total generation in 2019.  (data source: Our World in Data)](https://github.com/owid/energy-data). Based on a real-time data of Denmark's electricity demand and supply, we will drive the optimal capacity mix for conventional power plants (coal, nuclear and gas). 
 
-As Energiewende (energy transition) advances around the world, the electricity sector is going through a major structural change. Countries around the world are moving away from fossil fuels and nuclear power and increasing the share of low-carbon energy sources to reduce carbon emissions. How would the higher share of renewable energy change the optimal capacity mix? To answer this question, let us turn to Denmark, [which has the largest share of low-carbon energy (solar, wind, hydro, biomass, waste, geothermal) in the EU, reaching 77.4% of the total generation in 2020.  (data source: Our World in Data)](https://github.com/owid/energy-data). 
-
-```{r}
+```{r include=FALSE}
+## Consider taking this graph out. Not so relevant. 
+# List of EU countries
 eu <- c("AUT", "BEL", "BGR", "HRV", "CYP", "CZE", "DNK", "EST", "FIN", "FRA", "DEU", "GRC", "HUN", "IRL", "ITA", "LVA", "LTU", "LUX", "MLT", "NLD", "POL", "PRT", "ROU", "SVK", "SVN", "ESP", "SWE")
-energy <- read.csv("data/owid-energy-data.csv", sep=",") %>%
-  filter(year==2019, iso_code %in% eu) %>% select(country, renewables_share_elec) %>% na.omit() %>%
-  arrange(desc(renewables_share_elec)) %>% top_n(10)
 
-ggplot(energy, aes(x=reorder(country,-renewables_share_elec), y=renewables_share_elec)) + geom_col() +
-  ylim(0,90)
+# Electricity data from Our World in Data, 2019 
+energy <- read.csv("data/owid-energy-data.csv", sep=",") %>%
+  filter(year==2019, iso_code %in% eu) %>% 
+  select(country, renewables_share_elec) %>% na.omit() %>% 
+  arrange(desc(renewables_share_elec)) %>%
+  mutate(denmark = as.factor(ifelse(country=="Denmark", 1, 0))) %>%
+  slice(1:15) %>%
+  as.data.frame()
+
+ggplot(energy, aes(x=reorder(country,-renewables_share_elec), 
+                   y=renewables_share_elec, group="denmark")) + ## Why does the color not change?
+  geom_col() +
+  labs(title="Top 15 EU countries with the most renewable electricity in 2019",
+       y="Share of Renewable in Electricity") +
+  theme_classic() +
+  theme(title = element_text(hjust=0.5),
+        axis.title.x = element_blank(),
+        axis.text.x = element_text(angle=45)) +
+  scale_fill_manual(values = c("#669933", "#FFCC66")) 
+
 
 ```
 
+## Data and methodology
 
-## Data
+[Screening Curve Model](http://open-electricity-economics.org/book/text/05) is used to derive the least-cost generation capacity in the long run. The model is run by joining two graphs on the same x-axis: load duration curve and screening curves of conventional power plants. Load duration curve is the hourly electricity demand over a year, ordered by size. Screening curves show the change in annualized full costs of generating electricity with respect to running hours of the power plant. [Open Electricity Economics](http://open-electricity-economics.org/book/text/05) provides an excellent explanation of this model.
 
-[Open Power System Data](https://open-power-system-data.org/) gives hour-by-hour electricity demand (load), total capacity, total generation, solar and wind generation and capacity in the EU. 
+To run this model, we will use data from the following sources: 
 
-For this exercise, we take a look at 
+*[Open Power System Data](https://open-power-system-data.org/) gives hour-by-hour electricity demand (load), total capacity, total generation, solar and wind generation and capacity in the EU. 
+
+*[International Energy Agency](https://www.iea.org/reports/world-energy-model/techno-economic-inputs#abstract) provides the European estimates of the electricity generation cost for the year 2040 by technology. 
+
+For the purpose of this exercise, we will assume that the discount rate is 5% and each power plant has a lifetime of 40 years.
+
 
 ```{r}
 raw <- read.csv("data/openpowersystemdata.csv")
+
+# Subset the dataset for Denmark in 2019.
 denmark <- raw %>% filter(str_detect(cet_cest_timestamp, "2019")) %>%  
   select(timestamp=cet_cest_timestamp,
-         load = DK_load_actual_entsoe_transparency,
+         load = DK_load_actual_entsoe_transparency, # in MW
          solar_gen = DK_solar_generation_actual,
-         wind_gen = DK_wind_generation_actual) %>%
-  mutate(residual_load = load - solar_gen - wind_gen)  # Calculate residual load, the rest of the load not served by solar and wind
+         wind_gen = DK_wind_generation_actual) 
 
-# Order the residual load in descending order 
-denmark_arr <- denmark %>% 
-  arrange(desc(residual_load)) 
-
-# Create a vector to name each hour of the year
-hr <- 1:8760 
-
-denmark_arr <- cbind(hr, denmark_arr)
-
-# Plot the load duration curve 
-ggplot(denmark_arr, aes(x=hr, y=residual_load)) + geom_area()
 ```
 
 # Screening Curve
 
+Screening curves show the the annualized full cost (fixed AND variable) of running the power plant with respect to the running hours of the power plant (=Full load hours). 
 
+The slope of the screening curves represents the variable cost of electricity generation ($/MWh). The y-intercepts represent the [discounted fixed cost](http://www.open-electricity-economics.org/book/text/03.html) of electricity.  
+Each technology has a different fixed and variable costs. 
+
+The following code produces the screening curves for nuclear, coal and gas based on the IEA data for the year 2040. Solar and wind energies are not included because we cannot control their running hours: they produce electricity only when the sun shine or the wind blows, which is determined by nature, not humans. We account for solar and wind energy production in the second piece, the load duration curve. 
+
+```{r}
+# IEA data on generation cost
+technology <- c("nuclear", "coal", "gas")
+fixed <- c(4500000, 2000000, 1000000) # capital costs in $/MW
+variable <- c(35, 90, 85) # variable costs in $/MWh
+screen_data <- tibble(technology, fixed, variable) %>%
+  mutate(afc = fixed*0.05*(1+0.05)^40/((1+0.05)^40-1)) # Calculate the discounted investment cost, assuming the discount rate of 5% and 40 years of lifetime 
+screen_data
+
+nuke_eq <- function(x){as.numeric(screen_data[1,3])*x+as.numeric(screen_data[1,4])}
+coal_eq <- function(x){as.numeric(screen_data[2,3])*x+as.numeric(screen_data[2,4])}
+gas_eq <- function(x){as.numeric(screen_data[3,3])*x+as.numeric(screen_data[3,4])}
+
+# Create a ggplot base
+options(scipen=999)
+base <- ggplot() + xlim(0, 8760)
+screen <- base + 
+  geom_function(fun=nuke_eq, color="red") +
+  geom_function(fun=coal_eq, color="black") +
+  geom_function(fun=gas_eq, color="blue") +
+  labs(x="FHL", 
+       y="Full Cost (USD/MW)") + 
+  theme_minimal()
+screen
+
+# But this wouldn't work, because the load duration curve is for 2019 and the amount of RE generated would have changed over the years? 
+```
+
+The screening curves of conventional power plants based on the IEA's 2040 scenario show that it is most economical to run nuclear power plant if is run more than 4079 hours (that is the x value of the point where the gas curve meets the nuclear curve). In other words, nuclear power plant will be run as the [base load power plant](https://en.wikipedia.org/wiki/Base_load). For under 4079 hours, it is more economical to run gas power plant. In other words, gas acts as the [peak-load power plant.](https://en.wikipedia.org/wiki/Peaking_power_plant). Coal is NOT economical to run at any hour because its variable cost is higher than any other plants, probably because of higher carbon prices.   
+
+# Load duration curve 
+
+Load duration curve plots the hourly the demand for electricity over a year in a descending order. To read this graph, we can pick a point on the x-axis and read the corresponding value on the y-axis as the demand until that hour. For example, for 4000 hours of the year, the electricity demand exceeded 3914.5 MW. We can see that the maximum energy demand in Denmark was 6749.6 GW, while the minimum energy demand was 1693 GW.
+
+As we mentioned earlier, we can account for solar and wind generation in the load duration curve. When renewable energies produce energy, it is dispatched before any other plant because their variable costs are (almost) 0. In other words, when solar and wind power plants are at work, conventional power plants only have to meet the demand remaining after subtracting solar and power generation. This remaining demand is called "residual load". When renewable energy produces more energy than demand, the residual load will be negative (!). The graph below shows the difference in total and residual loads.
+
+
+```{r}
+# Order the demand (load) in descending order 
+denmark_load <- denmark %>% 
+  arrange(desc(load)) 
+
+# Create a vector to name each hour of the year for the net load
+hr <- 1:8760 
+denmark_load <- cbind(hr, denmark_load)
+
+# Calculate the residual load and arrange them 
+denmark_residual <- denmark %>% 
+  mutate(residual_load = load - solar_gen - wind_gen) %>%
+  arrange(desc(residual_load)) 
+
+
+# Plot the load duration curve 
+load_all <- ggplot() + 
+  geom_line(data=denmark_load, aes(x=hr, y=load), color="red") +
+  geom_area(data=denmark_residual, aes(x=hr, y=residual_load), fill="blue", alpha=0.5) +
+  labs(x="FHL",
+       y="Hourly Demand (MW)") +
+  theme_classic()
+  
+load_all
+```
+
+We can estimate optimal capacity mix of conventional power plants by putting the graphs on the same x-axis. 
+
+```{r}
+grid.newpage()
+grid.draw(rbind(ggplotGrob(screen), ggplotGrob(load_all), size="last"))
+```
 
